@@ -41,9 +41,9 @@ impl ConfluenceConfig {
 
 #[derive(Debug)]
 pub struct ConfluenceMeta{
-    page_id: String,
-    page_title: String,
-    page_body: String
+    pub page_id: String,
+    pub page_title: String,
+    pub page_body: String
 }
 
 impl ConfluenceMeta{
@@ -84,7 +84,12 @@ impl ConfluenceMeta{
         };
         store
     }
-    pub async fn get_embeddings(pages_content: String) -> Result<Vec<f64>, reqwest::Error>{
+
+    pub fn get_id(&self) -> String {
+        self.page_id.to_string()
+    }
+
+    pub async fn get_embeddings(pages_content: String) -> Vec<f32> {
         let confluence_config = ConfluenceConfig::new().expect("keys set");
         let client = reqwest::Client::new();
 
@@ -97,24 +102,37 @@ impl ConfluenceMeta{
             "model": "text-embedding-3-small"
         }))
             .send()
-            .await?;
+            .await;
 
-        let mut embedding: Vec<f64> = Vec::new();
-        let v: Value = serde_json::from_str(&response.text().await?).expect("message");
-        for &item in v["data"].as_array().expect("array").get(0).iter(){
-             embedding = if let Value::Array(items) = &item["embedding"] {
+        let mut embedding: Vec<f32> = Vec::new();
+        let v: Value = serde_json::from_str(&response.expect("response").text().await.expect("new")).expect("message");
+        for item in v["data"].as_array().expect("array").get(0).iter() {
+            embedding = if let Value::Array(items) = &item["embedding"] {
                 items.iter().filter_map(|item| {
                     match item {
-                        Value::Number(num) => num.as_f64(),
+                        Value::Number(num) => num.as_f64().map(|n| n as f32),
                         _ => None,
                     }
-                }).collect::<Vec<f64>>()
+                }).collect::<Vec<f32>>()
             } else {
                 vec![]
             };
         }
-        println!("{:?}", embedding);
-        Ok(embedding)
+        embedding
     }
+    // pub fn create_point_struct() -> SerdeResult<()>{
+    //     let confluence_config = ConfluenceConfig::new();
+    //
+    //     let pages_content = match confluence_config?.get_pages().await {
+    //         Ok(content) => content,
+    //         Err(e) => return Err(Box::new(e)),
+    //     };
+    //
+    //     for v in ConfluenceMeta::create_store(pages_content).await.iter(){
+    //         ConfluenceMeta::get_embeddings((&v.page_body).to_string()).await.expect("TODO: panic message");
+    //     }
+    //
+    //     Ok(())
+    // }
 }
 

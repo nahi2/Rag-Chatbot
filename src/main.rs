@@ -3,8 +3,9 @@ mod confluence;
 use qdrant_client::prelude::*;
 use actix_web::{get, post, web, App, HttpResponse, HttpServer, Responder};
 use std::error::Error;
-use reqwest::StatusCode;
+use serde_json::json;
 use crate::confluence::{ConfluenceConfig, ConfluenceMeta};
+
 
 #[tokio::main]
 async fn main() -> std::io::Result<()> {
@@ -43,6 +44,8 @@ async fn create_collection(req_body: String) -> Result<HttpResponse, Box<dyn Err
 
 #[get("/get_pages")]
 async fn get_pages() -> Result<HttpResponse, Box<dyn Error>> {
+    let client = QdrantClient::from_url("http://localhost:6334").build()?;
+
     let confluence_config = ConfluenceConfig::new();
 
     let pages_content = match confluence_config?.get_pages().await {
@@ -50,7 +53,26 @@ async fn get_pages() -> Result<HttpResponse, Box<dyn Error>> {
         Err(e) => return Err(Box::new(e)),
     };
 
-    ConfluenceMeta::get_embeddings(pages_content).await?;
+    for v in ConfluenceMeta::create_store(pages_content).await.iter(){
+        let embeddings = ConfluenceMeta::get_embeddings(v.page_body.to_string()).await;
+
+        client
+            .upsert_points_blocking(
+                "memory".to_string(),
+                None,
+                vec![PointStruct::new(
+                    (&v.page_id).parse::<u64>().unwrap(),
+                    vec![0.3,0.4],
+                    json!(
+                {"color": v.page_title}
+            )
+                        .try_into()
+                        .unwrap(),
+                )],
+                None,
+            )
+            .await?;
+    }
 
     Ok(HttpResponse::from(HttpResponse::Ok()))
 }
