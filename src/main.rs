@@ -3,6 +3,8 @@ mod confluence;
 use qdrant_client::prelude::*;
 use actix_web::{get, post, web, App, HttpResponse, HttpServer, Responder};
 use std::error::Error;
+use qdrant_client::qdrant::{UpsertPoints, VectorParams, VectorsConfig};
+use qdrant_client::qdrant::vectors_config::Config;
 use serde_json::json;
 use crate::confluence::{ConfluenceConfig, ConfluenceMeta};
 
@@ -29,7 +31,13 @@ async fn create_collection(req_body: String) -> Result<HttpResponse, Box<dyn Err
         shard_number: None,
         on_disk_payload: None,
         timeout: None,
-        vectors_config: None,
+        vectors_config: Some(VectorsConfig {
+            config: Some(Config::Params(VectorParams {
+                size: 1536,
+                distance: Distance::Cosine.into(),
+                ..Default::default()
+            })),
+        }),
         replication_factor: None,
         write_consistency_factor: None,
         init_from_collection: None,
@@ -56,22 +64,7 @@ async fn get_pages() -> Result<HttpResponse, Box<dyn Error>> {
     for v in ConfluenceMeta::create_store(pages_content).await.iter(){
         let embeddings = ConfluenceMeta::get_embeddings(v.page_body.to_string()).await;
 
-        client
-            .upsert_points_blocking(
-                "memory".to_string(),
-                None,
-                vec![PointStruct::new(
-                    (&v.page_id).parse::<u64>().unwrap(),
-                    vec![0.3,0.4],
-                    json!(
-                {"color": v.page_title}
-            )
-                        .try_into()
-                        .unwrap(),
-                )],
-                None,
-            )
-            .await?;
+        client.upsert_points("memory".to_string(), None ,vec![PointStruct::new((&v.page_id).parse::<u64>().unwrap(), embeddings, json!({"test":"test"}).try_into().expect("json"))], None).await?;
     }
 
     Ok(HttpResponse::from(HttpResponse::Ok()))
