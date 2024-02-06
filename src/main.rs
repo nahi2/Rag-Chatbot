@@ -12,7 +12,7 @@ use crate::confluence::{ConfluenceConfig, ConfluenceMeta};
 #[tokio::main]
 async fn main() -> std::io::Result<()> {
     HttpServer::new(|| {
-        App::new().service(create_collection).service(get_pages)
+        App::new().service(create_collection).service(get_pages).service(search_pages)
     })
         .bind(("127.0.0.1", 8080))?
         .run()
@@ -68,4 +68,38 @@ async fn get_pages() -> Result<HttpResponse, Box<dyn Error>> {
     }
 
     Ok(HttpResponse::from(HttpResponse::Ok()))
+}
+
+#[post("/search_pages")]
+async fn search_pages(req_body: String) -> Result<HttpResponse, Box<dyn Error>> {
+    let client = QdrantClient::from_url("http://localhost:6334").build()?;
+
+    let db_response = client.search_points(&SearchPoints{
+        collection_name: "memory".to_string(),
+        vector: ConfluenceMeta::get_embeddings(req_body.to_string()).await,
+        filter: None,
+        limit: 5,
+        with_payload: None,
+        params: None,
+        score_threshold: None,
+        offset: None,
+        vector_name: None,
+        with_vectors: None,
+        read_consistency: None,
+        timeout: None,
+        shard_key_selector: None,
+        sparse_indices: None,
+    }).await;
+
+    match db_response {
+        Ok(response) => {
+            // Here, you can format 'response' as a string.
+            // This example uses a placeholder format; adjust it based on 'response' structure.
+            let response_body = format!("Search Response: {:?}", response);
+            Ok(HttpResponse::Ok().body(response_body))
+        },
+        Err(e) => {
+            Ok(HttpResponse::InternalServerError().body(format!("Search Error: {}", e)))
+        }
+    }
 }

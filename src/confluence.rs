@@ -120,19 +120,5 @@ impl ConfluenceMeta{
         }
         embedding
     }
-    // pub fn create_point_struct() -> SerdeResult<()>{
-    //     let confluence_config = ConfluenceConfig::new();
-    //
-    //     let pages_content = match confluence_config?.get_pages().await {
-    //         Ok(content) => content,
-    //         Err(e) => return Err(Box::new(e)),
-    //     };
-    //
-    //     for v in ConfluenceMeta::create_store(pages_content).await.iter(){
-    //         ConfluenceMeta::get_embeddings((&v.page_body).to_string()).await.expect("TODO: panic message");
-    //     }
-    //
-    //     Ok(())
-    // }
 }
 
