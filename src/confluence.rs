@@ -1,42 +1,50 @@
-use std::env;
-use std::error::Error;
-use dotenv::{dotenv};
+use dotenv;
+use std::{env, result};
 use reqwest::header::ACCEPT;
+use std::error::Error;
+use std::sync::MutexGuard;
 use scraper::Html;
 use serde_json::{json, Result as SerdeResult, Value};
 
 pub struct ConfluenceConfig {
-    url: String,
-    username: String,
-    password: String,
-    open_ai_key: String
+    confluence_url: String,
+    confluence_username:String,
+    confluence_api_key:String,
 }
 
 impl ConfluenceConfig {
-    pub fn new() -> Result<Self, Box<dyn std::error::Error>> {
-        dotenv().ok();
-        Ok(Self{
-            url: env::var("CONFLUENCE_URL")?,
-            username: env::var("CONFLUENCE_USERNAME")?,
-            password: env::var("CONFLUENCE_API_KEY")?,
-            open_ai_key: env::var("OPEN_AI_KEY")?,
+    pub fn new() -> Result<Self, ()> {
+        dotenv::dotenv().ok();
+        Ok(Self {
+            confluence_url: env::var("CONFLUENCE_URL").map_err(|err|{
+                eprintln!("Could not find confluence url")
+            })?,
+            confluence_username: env::var("CONFLUENCE_USERNAME").map_err(|err|{
+                eprintln!("Could not find confluence url")
+            })?,
+            confluence_api_key: env::var("CONFLUENCE_API_KEY").map_err(|err|{
+                eprintln!("Could not find confluence url")
+            })?,
         })
     }
 
-    pub async fn get_pages(&self) -> Result<String, reqwest::Error> {
+    pub async fn get_conf_pages(&self) -> Result<String, Box<dyn Error>> {
         let client = reqwest::Client::new();
 
         let res = client
-            .get(&self.url)
-            .basic_auth(&self.username, Some(&self.password))
+            .get(&self.confluence_url)
+            .basic_auth(&self.confluence_username, Some(&self.confluence_api_key))
             .header(ACCEPT, "application/json")
             .send()
             .await?;
 
-        let body = res.text().await?;
-
-        Ok(body)
-    }
+        if res.status().is_success() {
+            let body = res.text().await?;
+            Ok(body)
+        } else {
+            Err(format!("Request failed with status: {}", res.status()).into())
+        }
+}
 }
 
 #[derive(Debug)]
@@ -46,78 +54,33 @@ pub struct ConfluenceMeta{
     pub page_body: String
 }
 
-impl ConfluenceMeta{
-    pub async fn create_store(message: String) -> Vec<ConfluenceMeta> {
-        let v: Value = serde_json::from_str(&message).expect("message");
-        let mut store: Vec<ConfluenceMeta> = Vec::new();
-
-        for page in v["results"].as_array().expect("results"){
-            let mut metadata: ConfluenceMeta = ConfluenceMeta{
-                page_id: "id".to_string(),
-                page_title: "title".to_string(),
-                page_body: "body".to_string(),
-            };
-
-            match page["id"].as_str() {
-                Some(v) => {
-                    metadata.page_id = v.to_string();
-                },
-                None => {}
-            };
-
-            match page["title"].as_str() {
-                Some(v) => {
-                    metadata.page_title = v.to_string();
-                },
-                None => {}
-            };
-
-            match page["body"]["storage"]["value"].as_str() {
-                Some(v) => {
-                    let document = Html::parse_document(v);
-                    let body = document.root_element();
-                    metadata.page_body=body.text().collect::<Vec<_>>().join(" ").trim().to_string();;
-                },
-                None => {}
-            };
-            store.push(metadata)
-        };
-        store
-    }
-
-    pub fn get_id(&self) -> String {
-        self.page_id.to_string()
-    }
-
-    pub async fn get_embeddings(pages_content: String) -> Vec<f32> {
-        let confluence_config = ConfluenceConfig::new().expect("keys set");
-        let client = reqwest::Client::new();
-
-        let client = reqwest::Client::new();
-        let response = client.post("https://api.openai.com/v1/embeddings")
-            .header("Content-Type", "application/json")
-            .header("Authorization", format!("Bearer {}", confluence_config.open_ai_key))
-            .json(&json!({
-            "input": pages_content,
-            "model": "text-embedding-3-small"
-        }))
-            .send()
-            .await;
-
-        let mut embedding: Vec<f32> = Vec::new();
-        let v: Value = serde_json::from_str(&response.expect("response").text().await.expect("new")).expect("message");
-        for item in v["data"].as_array().expect("array").get(0).iter() {
-            embedding = if let Value::Array(items) = &item["embedding"] {
-                items.iter().filter_map(|item| {
-                    match item {
-                        Value::Number(num) => num.as_f64().map(|n| n as f32),
-                        _ => None,
-                    }
-                }).collect::<Vec<f32>>()
-            } else {
-                vec![]
-            };
+impl ConfluenceMeta {
+    pub fn convert_to_json(raw_pages: &str) -> Result<Value, serde_json::error::Error> {
+        match serde_json::from_str(raw_pages) {
+            Ok(pages) => Ok(pages),
+            Err(e) => {
+                eprintln!("Error converting pages: {}", e);
+                Err(e)
+            }
         }
-        embedding
+    }
+    pub fn build_store(json_pages: Value) -> Option<Vec<ConfluenceMeta>> {
+        let mut store = Vec::new();
+        let pages_array = json_pages["results"].as_array()?;
+
+        for page in pages_array {
+            let mut metadata = ConfluenceMeta {
+                page_id: page["id"].as_str()?.to_string(),
+                page_title: page["title"].as_str()?.to_string(),
+                page_body: page["body"]["storage"]["value"].as_str()?.to_string(),
+            };
+
+            let document = Html::parse_document(&metadata.page_body);
+            let body = document.root_element(); // This may not be correct, depending on your HTML parsing library
+            metadata.page_body = body.text().collect::<Vec<_>>().join(" ").trim().to_string();
+
+            store.push(metadata);
+        }
+        Some(store)
     }
 }
