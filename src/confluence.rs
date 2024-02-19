@@ -76,11 +76,32 @@ impl ConfluenceMeta {
             };
 
             let document = Html::parse_document(&metadata.page_body);
-            let body = document.root_element(); // This may not be correct, depending on your HTML parsing library
+            let body = document.root_element();
             metadata.page_body = body.text().collect::<Vec<_>>().join(" ").trim().to_string();
 
             store.push(metadata);
         }
         Some(store)
+    }
+
+    pub async fn  encapsulate_store() -> Result<Vec<ConfluenceMeta>, Box<dyn Error>> {
+        let confluence_config = match ConfluenceConfig::new() {
+            Ok(config) => config,
+            Err(_) => return Err(Box::from("Failed to create config")),
+        };
+        let raw_pages = match confluence_config.get_conf_pages().await {
+            Ok(pages) => pages,
+            Err(_) => return Err(Box::from("Failed to get pages from confluence"))
+        };
+        let json_pages = match ConfluenceMeta::convert_to_json(&raw_pages) {
+            Ok(value) => value,
+            Err(_) => return Err(Box::from("Failed to convert pages into json"))
+        };
+        let store = match ConfluenceMeta::build_store(json_pages) {
+            None => { return Err(Box::from("Failed to build store"))
+        }
+            Some(store) => store
+        };
+        Ok(store)
     }
 }
