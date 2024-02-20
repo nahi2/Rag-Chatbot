@@ -10,6 +10,7 @@ dependencies = [
  "anyhow",
  "dotenv",
  "openai",
+ "openai-rust",
  "qdrant-client",
  "reqwest",
  "scraper",
@@ -1294,6 +1295,22 @@ dependencies = [
  "serde",
  "serde_json",
  "tokio",
+]
+
+[[package]]
+name = "openai-rust"
+version = "1.5.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "56714236d6891575c2b26005995a5b88634a1fc8d830578f6bca584642f32275"
+dependencies = [
+ "anyhow",
+ "bytes",
+ "futures-core",
+ "futures-util",
+ "lazy_static",
+ "reqwest",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]
