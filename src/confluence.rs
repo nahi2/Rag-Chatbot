@@ -49,7 +49,7 @@ impl ConfluenceConfig {
 
 #[derive(Debug)]
 pub struct ConfluenceMeta{
-    pub page_id: String,
+    pub page_id: u64,
     pub page_title: String,
     pub page_body: String
 }
@@ -70,7 +70,7 @@ impl ConfluenceMeta {
 
         for page in pages_array {
             let mut metadata = ConfluenceMeta {
-                page_id: page["id"].as_str()?.to_string(),
+                page_id: page["id"].as_str()?.parse::<u64>().expect("expect u64 string"),
                 page_title: page["title"].as_str()?.to_string(),
                 page_body: page["body"]["storage"]["value"].as_str()?.to_string(),
             };
