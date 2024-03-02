@@ -79,7 +79,27 @@ async fn set_doc_store(data: web::Data<AppState>) -> HttpResponse {
 }
 
 #[get("/search_collection")]
-async fn search_collection(req_body: String) -> HttpResponse {
-    println!("{:?}", search_qdrant_collection(req_body).await);
-    HttpResponse::Ok().into()
+async fn search_collection(req_body: String, data: web::Data<AppState>) -> HttpResponse {
+    let search_results = match search_qdrant_collection(req_body).await {
+        Ok(results) => results,
+        Err(_) => {
+            return HttpResponse::BadRequest().body("Insufficient pages");
+    }
+    };
+
+    let store = match data.store.lock() {
+        Ok(guard) => guard,
+        Err(poisoned) => {
+            eprintln!("Mutex is poisoned: {:?}", poisoned);
+            return HttpResponse::InternalServerError().finish();
+        }
+    };
+
+    let page_one = store.iter().find(|&x| &x.page_id==search_results.get(0).unwrap()).unwrap();
+    let page_two = store.iter().find(|&x| &x.page_id==search_results.get(1).unwrap()).unwrap();
+    let page_three = store.iter().find(|&x| &x.page_id==search_results.get(2).unwrap()).unwrap();
+
+    let pages = json!({"page_one": format!("{:?}", page_one), "page_two": format!("{:?}", page_two), "page_three": format!("{:?}", page_three)});
+
+    HttpResponse::Ok().json(pages)
 }
